@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>양천구 도서관 관리 시스템</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ── HEADER ── -->
+  <header class="site-header">
+    <div class="header-badge">1113 유재혁</div>
+    <div class="header-center">
+      <div class="header-icon">📚</div>
+      <div>
+        <h1 class="header-title">양천구 도서시설 <span>관리 시스템</span></h1>
+        <p class="header-sub">Seoul Yangcheon-gu Library Management System</p>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span id="clock" class="clock"></span>
+    </div>
+  </header>
+
+  <!-- ── CONTROL BAR ── -->
+  <section class="control-bar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="도서관 이름으로 검색..." autocomplete="off" />
+    </div>
+    <div class="filter-wrap">
+      <label for="regionFilter">지역 필터</label>
+      <select id="regionFilter">
+        <option value="">전체 지역</option>
+      </select>
+    </div>
+    <div class="rows-wrap">
+      <label for="numOfRows">페이지당</label>
+      <select id="numOfRows">
+        <option value="5">5개</option>
+        <option value="10" selected>10개</option>
+        <option value="20">20개</option>
+        <option value="50">50개</option>
+      </select>
+    </div>
+    <button id="fetchBtn" class="btn-primary">
+      <span class="btn-icon">🔄</span> 데이터 불러오기
+    </button>
+  </section>
+
+  <!-- ── STATS ROW ── -->
+  <section class="stats-row">
+    <div class="stat-card">
+      <div class="stat-num" id="statTotal">—</div>
+      <div class="stat-label">전체 도서관</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statFiltered">—</div>
+      <div class="stat-label">검색 결과</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statPage">—</div>
+      <div class="stat-label">페이지</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statStatus">대기</div>
+      <div class="stat-label">API 상태</div>
+    </div>
+  </section>
+
+  <!-- ── MAIN ── -->
+  <main class="main-content">
+
+    <!-- 목록 패널 -->
+    <section class="list-panel">
+      <div class="panel-header">
+        <h2>도서관 목록</h2>
+        <span id="listCount" class="count-badge">0개</span>
+      </div>
+      <div id="libraryList" class="library-list">
+        <div class="empty-state">
+          <div class="empty-icon">🏛️</div>
+          <p><strong>데이터 불러오기</strong> 버튼을 눌러<br/>도서시설 정보를 조회하세요.</p>
+        </div>
+      </div>
+      <!-- 페이지네이션 -->
+      <div class="pagination-bar" id="paginationBar"></div>
+    </section>
+
+    <!-- 상세 패널 -->
+    <section class="detail-panel">
+      <div class="panel-header">
+        <h2>상세 정보</h2>
+      </div>
+      <div id="detailContent" class="detail-content">
+        <div class="empty-state">
+          <div class="empty-icon">👈</div>
+          <p>목록에서 도서관을 선택하면<br/>상세 정보가 표시됩니다.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── TOAST ── -->
+  <div id="toast" class="toast"></div>
+
+  <!-- ── LOADING ── -->
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+    <p>API 데이터 로딩 중...</p>
+  </div>
+
+  <!-- ── FOOTER ── -->
+  <footer class="site-footer">
+    <p>데이터 출처: 서울특별시 양천구 도서시설 현황 | 공공데이터포털 Open API</p>
+    <p class="footer-dev">Developed by <strong>1113 유재혁</strong></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
