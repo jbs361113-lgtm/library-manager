@@ -1,14 +1,6 @@
 /**
  * 양천구 도서관 관리 시스템 — app.js
  * Author : 1113 유재혁
- *
- * 실제 API XML 필드명 (확인된 것):
- *  lbrrynm, rdnmadr, phonenumber, hompageurl,
- *  wkdayoperbgngtm, wkdayoperendtm,
- *  satoperbgngtm,  satoperendtm,
- *  closeday, bookco, seatco,
- *  latitude, longitude,
- *  lbrryty, operinestitutionnm, emdnm, partclr
  */
 
 'use strict';
@@ -114,12 +106,12 @@ async function fetchLibraries() {
     updateStats();
     renderPagination();
     setStatus('정상');
-    showToast(`✅ ${items.length}개 도서관 정보 로드 완료`, 'success');
+    showToast('✅ ' + items.length + '개 도서관 정보 로드 완료', 'success');
 
   } catch (err) {
     console.error('[API 오류]', err);
     setStatus('오류');
-    showToast(`❌ ${err.message}`, 'error');
+    showToast('❌ ' + err.message, 'error');
     renderFallback();
   } finally {
     showLoading(false);
@@ -137,22 +129,26 @@ function parseXML(xmlText) {
     return [];
   }
 
-  const resultCode = doc.querySelector('resultCode')?.textContent?.trim();
-  if (resultCode && resultCode !== '00') {
-    const msg = doc.querySelector('resultMsg')?.textContent?.trim();
-    throw new Error(`API 오류 (${resultCode}): ${msg}`);
+  const resultCode = doc.querySelector('resultCode');
+  if (resultCode && resultCode.textContent.trim() !== '00') {
+    const msg = doc.querySelector('resultMsg');
+    throw new Error('API 오류: ' + (msg ? msg.textContent.trim() : '알 수 없음'));
   }
 
   const items = [];
-  doc.querySelectorAll('item').forEach(node => {
+  const itemNodes = doc.querySelectorAll('item');
+
+  itemNodes.forEach(function(node) {
     const obj = {};
-    node.childNodes.forEach(child => {
-      if (child.nodeType === 1) {
-        // 태그명을 소문자로 저장 — API가 소문자로 옴
-        obj[child.nodeName.toLowerCase()] = child.textContent?.trim() ?? '';
-      }
-    });
-    if (Object.keys(obj).length > 0) items.push(obj);
+    const children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      // 태그명 그대로 소문자로 저장
+      obj[child.tagName.toLowerCase()] = child.textContent ? child.textContent.trim() : '';
+    }
+    if (Object.keys(obj).length > 0) {
+      items.push(obj);
+    }
   });
 
   return items;
@@ -163,21 +159,31 @@ function parseTotalCount(xmlText) {
   return match ? parseInt(match[1], 10) : 0;
 }
 
-/* ── 필드 읽기 (소문자 키) ────────────────────── */
-// API XML 태그명이 전부 소문자이므로 소문자 키로만 접근
-function f(obj, key) {
-  return obj[key] ?? '';
+/* ── 필드 읽기 ────────────────────────────────── */
+// obj에서 key(소문자)로 값을 꺼냄. 없으면 빈 문자열
+function fld(obj, key) {
+  const val = obj[key];
+  if (val === undefined || val === null) return '';
+  return String(val);
 }
 
 /* ── 지역 필터 ────────────────────────────────── */
 function buildRegionFilter(items) {
   const prev    = el.regionFilter.value;
-  const regions = [...new Set(
-    items.map(lib => f(lib, 'emdnm')).filter(Boolean)
-  )].sort();
+  const regions = [];
+  const seen    = {};
+
+  items.forEach(function(lib) {
+    const emdnm = fld(lib, 'emdnm');
+    if (emdnm && !seen[emdnm]) {
+      seen[emdnm] = true;
+      regions.push(emdnm);
+    }
+  });
+  regions.sort();
 
   el.regionFilter.innerHTML = '<option value="">전체 지역</option>';
-  regions.forEach(r => {
+  regions.forEach(function(r) {
     const opt       = document.createElement('option');
     opt.value       = r;
     opt.textContent = r;
@@ -191,13 +197,13 @@ function applyFilters() {
   const keyword = el.searchInput.value.trim().toLowerCase();
   const region  = el.regionFilter.value;
 
-  state.filtered = state.allItems.filter(lib => {
-    const name    = f(lib, 'lbrrynm').toLowerCase();
-    const addr    = f(lib, 'rdnmadr').toLowerCase();
-    const emdnm   = f(lib, 'emdnm');
-    const okKey   = !keyword || name.includes(keyword) || addr.includes(keyword);
-    const okRegion= !region  || emdnm === region;
-    return okKey && okRegion;
+  state.filtered = state.allItems.filter(function(lib) {
+    const name   = fld(lib, 'lbrrynm').toLowerCase();
+    const addr   = fld(lib, 'rdnmadr').toLowerCase();
+    const emdnm  = fld(lib, 'emdnm');
+    const okKey  = !keyword || name.indexOf(keyword) !== -1 || addr.indexOf(keyword) !== -1;
+    const okReg  = !region  || emdnm === region;
+    return okKey && okReg;
   });
 
   state.selectedIdx = null;
@@ -207,48 +213,43 @@ function applyFilters() {
 
 /* ── 목록 렌더링 ──────────────────────────────── */
 function renderList() {
-  el.listCount.textContent = `${state.filtered.length}개`;
+  el.listCount.textContent = state.filtered.length + '개';
 
   if (state.filtered.length === 0) {
-    el.libraryList.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">🔍</div>
-        <p>검색 결과가 없습니다.</p>
-      </div>`;
-    el.detailContent.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">👈</div>
-        <p>목록에서 도서관을 선택하면<br/>상세 정보가 표시됩니다.</p>
-      </div>`;
+    el.libraryList.innerHTML =
+      '<div class="empty-state"><div class="empty-icon">🔍</div><p>검색 결과가 없습니다.</p></div>';
+    el.detailContent.innerHTML =
+      '<div class="empty-state"><div class="empty-icon">👈</div><p>목록에서 도서관을 선택하면<br/>상세 정보가 표시됩니다.</p></div>';
     return;
   }
 
-  el.libraryList.innerHTML = state.filtered.map((lib, i) => {
-    const name    = f(lib, 'lbrrynm')   || '(이름 없음)';
-    const addr    = f(lib, 'rdnmadr')   || '주소 정보 없음';
-    const tel     = f(lib, 'phonenumber');
-    const lbrryty = f(lib, 'lbrryty');
-    const isActive = state.selectedIdx === i;
+  let html = '';
+  state.filtered.forEach(function(lib, i) {
+    const name    = fld(lib, 'lbrrynm') || '(이름 없음)';
+    const addr    = fld(lib, 'rdnmadr') || '주소 정보 없음';
+    const tel     = fld(lib, 'phonenumber');
+    const lbrryty = fld(lib, 'lbrryty');
+    const active  = state.selectedIdx === i ? ' active' : '';
 
-    return `
-      <div class="library-card${isActive ? ' active' : ''}"
-           onclick="selectLibrary(${i})"
-           role="button" tabindex="0"
-           onkeydown="if(event.key==='Enter')selectLibrary(${i})">
-        <div class="card-name">📖 ${esc(name)}</div>
-        <div class="card-addr">${esc(addr)}</div>
-        <div class="card-tags">
-          ${lbrryty ? `<span class="tag green">${esc(lbrryty)}</span>` : ''}
-          ${tel     ? `<span class="tag">📞 ${esc(tel)}</span>`        : ''}
-        </div>
-      </div>`;
-  }).join('');
+    html +=
+      '<div class="library-card' + active + '" onclick="selectLibrary(' + i + ')" role="button" tabindex="0">' +
+        '<div class="card-name">📖 ' + esc(name) + '</div>' +
+        '<div class="card-addr">' + esc(addr) + '</div>' +
+        '<div class="card-tags">' +
+          (lbrryty ? '<span class="tag green">' + esc(lbrryty) + '</span>' : '') +
+          (tel     ? '<span class="tag">📞 ' + esc(tel) + '</span>'        : '') +
+        '</div>' +
+      '</div>';
+  });
+
+  el.libraryList.innerHTML = html;
 }
 
 /* ── 도서관 선택 ──────────────────────────────── */
 function selectLibrary(i) {
   state.selectedIdx = i;
-  document.querySelectorAll('.library-card').forEach((card, idx) => {
+  const cards = document.querySelectorAll('.library-card');
+  cards.forEach(function(card, idx) {
     card.classList.toggle('active', idx === i);
   });
   renderDetail(state.filtered[i]);
@@ -256,113 +257,111 @@ function selectLibrary(i) {
 
 /* ── 상세 정보 렌더링 ─────────────────────────── */
 function renderDetail(lib) {
-  /* ── 실제 XML 필드명 그대로 사용 ── */
-  const name     = f(lib, 'lbrrynm');
-  const addr     = f(lib, 'rdnmadr');
-  const tel      = f(lib, 'phonenumber');
-  const homepage = f(lib, 'hompageurl');        // hompageurl (오타 아님, API 원본)
-  const wkStart  = f(lib, 'wkdayoperbgngtm');   // 평일 시작
-  const wkEnd    = f(lib, 'wkdayoperendtm');     // 평일 종료
-  const satStart = f(lib, 'satoperbgngtm');      // 토요일 시작
-  const satEnd   = f(lib, 'satoperendtm');       // 토요일 종료
-  const hlStart  = f(lib, 'hloperbgngtm');       // 공휴일 시작
-  const hlEnd    = f(lib, 'hloperendtm');        // 공휴일 종료
-  const closeday = f(lib, 'closeday');
-  const bookco   = f(lib, 'bookco');
-  const seatco   = f(lib, 'seatco');
-  const lat      = f(lib, 'latitude');
-  const lng      = f(lib, 'longitude');
-  const lbrryty  = f(lib, 'lbrryty');
-  const organ    = f(lib, 'operinestitutionnm');
-  const emdnm    = f(lib, 'emdnm');
-  const partclr  = f(lib, 'partclr');
+  const name     = fld(lib, 'lbrrynm');
+  const addr     = fld(lib, 'rdnmadr');
+  const tel      = fld(lib, 'phonenumber');
+  const homepage = fld(lib, 'hompageurl');
+  const wkStart  = fld(lib, 'wkdayoperbgngtm');
+  const wkEnd    = fld(lib, 'wkdayoperendtm');
+  const satStart = fld(lib, 'satoperbgngtm');
+  const satEnd   = fld(lib, 'satoperendtm');
+  const hlStart  = fld(lib, 'hloperbgngtm');
+  const hlEnd    = fld(lib, 'hloperendtm');
+  const closeday = fld(lib, 'closeday');
+  const bookco   = fld(lib, 'bookco');
+  const seatco   = fld(lib, 'seatco');
+  const lat      = fld(lib, 'latitude');
+  const lng      = fld(lib, 'longitude');
+  const lbrryty  = fld(lib, 'lbrryty');
+  const organ    = fld(lib, 'operinestitutionnm');
+  const emdnm    = fld(lib, 'emdnm');
+  const partclr  = fld(lib, 'partclr');
 
   // 홈페이지
   const homepageHtml = homepage
-    ? `<a href="${esc(homepage)}" target="_blank" rel="noopener noreferrer">${esc(homepage)}</a>`
+    ? '<a href="' + esc(homepage) + '" target="_blank" rel="noopener noreferrer">' + esc(homepage) + '</a>'
     : '정보 없음';
 
-  // 운영 시간 조합
+  // 운영 시간
   let openTime = '';
-  if (wkStart && wkEnd)   openTime += `평일 ${wkStart} ~ ${wkEnd}`;
-  if (satStart && satEnd) openTime += `<br/>토요일 ${satStart} ~ ${satEnd}`;
-  if (hlStart  && hlEnd)  openTime += `<br/>공휴일 ${hlStart} ~ ${hlEnd}`;
+  if (wkStart && wkEnd)   openTime += '평일 ' + wkStart + ' ~ ' + wkEnd;
+  if (satStart && satEnd) openTime += '<br/>토요일 ' + satStart + ' ~ ' + satEnd;
+  if (hlStart  && hlEnd)  openTime += '<br/>공휴일 ' + hlStart  + ' ~ ' + hlEnd;
   if (!openTime)          openTime  = '정보 없음';
 
   // 지도
-  const hasCoord  = lat && lng;
-  const mapSection = hasCoord ? `
-    <div class="map-link-box">
-      <p>🗺️ 외부 지도에서 위치를 확인하세요.</p>
-      <div class="map-coords">lat: ${esc(lat)} &nbsp;|&nbsp; lng: ${esc(lng)}</div>
-      <div class="map-buttons">
-        <a class="map-btn"
-           href="https://map.naver.com/v5/search/${encodeURIComponent(name)}"
-           target="_blank" rel="noopener">네이버 지도</a>
-        <a class="map-btn"
-           href="https://map.kakao.com/link/map/${encodeURIComponent(name)},${esc(lat)},${esc(lng)}"
-           target="_blank" rel="noopener">카카오 지도</a>
-      </div>
-    </div>` : '';
+  let mapSection = '';
+  if (lat && lng) {
+    mapSection =
+      '<div class="map-link-box">' +
+        '<p>🗺️ 외부 지도에서 위치를 확인하세요.</p>' +
+        '<div class="map-coords">lat: ' + esc(lat) + ' &nbsp;|&nbsp; lng: ' + esc(lng) + '</div>' +
+        '<div class="map-buttons">' +
+          '<a class="map-btn" href="https://map.naver.com/v5/search/' + encodeURIComponent(name) + '" target="_blank" rel="noopener">네이버 지도</a>' +
+          '<a class="map-btn" href="https://map.kakao.com/link/map/' + encodeURIComponent(name) + ',' + esc(lat) + ',' + esc(lng) + '" target="_blank" rel="noopener">카카오 지도</a>' +
+        '</div>' +
+      '</div>';
+  }
 
-  el.detailContent.innerHTML = `
-    <div class="detail-grid">
+  // 부제목
+  let subTitle = esc(lbrryty);
+  if (emdnm)   subTitle += ' · ' + esc(emdnm);
+  if (partclr) subTitle += ' · ' + esc(partclr);
 
-      <div class="detail-name-row">
-        <div class="detail-main-icon">🏛️</div>
-        <div>
-          <div class="detail-main-title">${esc(name) || '—'}</div>
-          <div class="detail-main-sub">
-            ${esc(lbrryty) || ''}
-            ${emdnm  ? ' · ' + esc(emdnm)  : ''}
-            ${partclr? ' · ' + esc(partclr) : ''}
-          </div>
-        </div>
-      </div>
+  el.detailContent.innerHTML =
+    '<div class="detail-grid">' +
 
-      <div class="info-block full">
-        <div class="info-label">주소</div>
-        <div class="info-value">${esc(addr) || '정보 없음'}</div>
-      </div>
+      '<div class="detail-name-row">' +
+        '<div class="detail-main-icon">🏛️</div>' +
+        '<div>' +
+          '<div class="detail-main-title">' + (esc(name) || '—') + '</div>' +
+          '<div class="detail-main-sub">' + subTitle + '</div>' +
+        '</div>' +
+      '</div>' +
 
-      <div class="info-block">
-        <div class="info-label">전화번호</div>
-        <div class="info-value">${esc(tel) || '정보 없음'}</div>
-      </div>
+      '<div class="info-block full">' +
+        '<div class="info-label">주소</div>' +
+        '<div class="info-value">' + (esc(addr) || '정보 없음') + '</div>' +
+      '</div>' +
 
-      <div class="info-block">
-        <div class="info-label">운영 기관</div>
-        <div class="info-value">${esc(organ) || '정보 없음'}</div>
-      </div>
+      '<div class="info-block">' +
+        '<div class="info-label">전화번호</div>' +
+        '<div class="info-value">' + (esc(tel) || '정보 없음') + '</div>' +
+      '</div>' +
 
-      <div class="info-block full">
-        <div class="info-label">운영 시간</div>
-        <div class="info-value">${openTime}</div>
-      </div>
+      '<div class="info-block">' +
+        '<div class="info-label">운영 기관</div>' +
+        '<div class="info-value">' + (esc(organ) || '정보 없음') + '</div>' +
+      '</div>' +
 
-      <div class="info-block">
-        <div class="info-label">휴관일</div>
-        <div class="info-value">${esc(closeday) || '정보 없음'}</div>
-      </div>
+      '<div class="info-block full">' +
+        '<div class="info-label">운영 시간</div>' +
+        '<div class="info-value">' + openTime + '</div>' +
+      '</div>' +
 
-      <div class="info-block">
-        <div class="info-label">장서 수</div>
-        <div class="info-value">${bookco ? Number(bookco).toLocaleString() + ' 권' : '정보 없음'}</div>
-      </div>
+      '<div class="info-block">' +
+        '<div class="info-label">휴관일</div>' +
+        '<div class="info-value">' + (esc(closeday) || '정보 없음') + '</div>' +
+      '</div>' +
 
-      <div class="info-block">
-        <div class="info-label">좌석 수</div>
-        <div class="info-value">${seatco ? Number(seatco).toLocaleString() + ' 석' : '정보 없음'}</div>
-      </div>
+      '<div class="info-block">' +
+        '<div class="info-label">장서 수</div>' +
+        '<div class="info-value">' + (bookco ? Number(bookco).toLocaleString() + ' 권' : '정보 없음') + '</div>' +
+      '</div>' +
 
-      <div class="info-block">
-        <div class="info-label">홈페이지</div>
-        <div class="info-value">${homepageHtml}</div>
-      </div>
+      '<div class="info-block">' +
+        '<div class="info-label">좌석 수</div>' +
+        '<div class="info-value">' + (seatco ? Number(seatco).toLocaleString() + ' 석' : '정보 없음') + '</div>' +
+      '</div>' +
 
-      ${mapSection}
+      '<div class="info-block">' +
+        '<div class="info-label">홈페이지</div>' +
+        '<div class="info-value">' + homepageHtml + '</div>' +
+      '</div>' +
 
-    </div>`;
+      mapSection +
+
+    '</div>';
 }
 
 /* ── 페이지네이션 ─────────────────────────────── */
@@ -376,19 +375,23 @@ function renderPagination() {
     else             start = Math.max(1, end - 4);
   }
 
-  let html = `<button class="page-btn" onclick="goPage(${cur-1})" ${cur===1?'disabled':''}>‹</button>`;
+  let html = '<button class="page-btn" onclick="goPage(' + (cur-1) + ')" ' + (cur===1?'disabled':'') + '>‹</button>';
+
   if (start > 1) {
-    html += `<button class="page-btn" onclick="goPage(1)">1</button>`;
-    if (start > 2) html += `<span style="padding:0 0.2rem;color:var(--ink-light)">…</span>`;
+    html += '<button class="page-btn" onclick="goPage(1)">1</button>';
+    if (start > 2) html += '<span style="padding:0 0.2rem;color:var(--ink-light)">…</span>';
   }
+
   for (let p = start; p <= end; p++) {
-    html += `<button class="page-btn${p===cur?' active':''}" onclick="goPage(${p})">${p}</button>`;
+    html += '<button class="page-btn' + (p===cur?' active':'') + '" onclick="goPage(' + p + ')">' + p + '</button>';
   }
+
   if (end < totalPages) {
-    if (end < totalPages-1) html += `<span style="padding:0 0.2rem;color:var(--ink-light)">…</span>`;
-    html += `<button class="page-btn" onclick="goPage(${totalPages})">${totalPages}</button>`;
+    if (end < totalPages - 1) html += '<span style="padding:0 0.2rem;color:var(--ink-light)">…</span>';
+    html += '<button class="page-btn" onclick="goPage(' + totalPages + ')">' + totalPages + '</button>';
   }
-  html += `<button class="page-btn" onclick="goPage(${cur+1})" ${cur>=totalPages?'disabled':''}>›</button>`;
+
+  html += '<button class="page-btn" onclick="goPage(' + (cur+1) + ')" ' + (cur>=totalPages?'disabled':'') + '>›</button>';
 
   el.paginationBar.innerHTML = html;
 }
@@ -406,7 +409,7 @@ function updateStats() {
   el.statTotal.textContent    = state.totalCount || '—';
   el.statFiltered.textContent = state.filtered.length || '—';
   el.statPage.textContent     = state.totalCount
-    ? `${state.pageNo} / ${Math.ceil(state.totalCount / state.numOfRows)}`
+    ? state.pageNo + ' / ' + Math.ceil(state.totalCount / state.numOfRows)
     : '—';
 }
 
@@ -421,11 +424,13 @@ function renderFallback() {
       phonenumber: '02-2699-5919',
       hompageurl: 'https://lib.yangcheon.or.kr/yclib/',
       wkdayoperbgngtm: '9:00', wkdayoperendtm: '22:00',
-      satoperbgngtm: '9:00',   satoperendtm: '18:00',
+      satoperbgngtm: '9:00', satoperendtm: '18:00',
+      hloperbgngtm: '', hloperendtm: '',
       closeday: '금요일+공휴일',
       bookco: '76603', seatco: '1259',
       latitude: '37.5136560000', longitude: '126.8337280000',
-      lbrryty: '공공도서관', operinestitutionnm: '양천문화재단', emdnm: '신정3동', partclr: '',
+      lbrryty: '공공도서관', operinestitutionnm: '양천문화재단',
+      emdnm: '신정3동', partclr: '',
     },
     {
       lbrrynm: '신월음악도서관',
@@ -433,11 +438,13 @@ function renderFallback() {
       phonenumber: '02-2691-5919',
       hompageurl: 'https://lib.yangcheon.or.kr/libsin/',
       wkdayoperbgngtm: '9:00', wkdayoperendtm: '22:00',
-      satoperbgngtm: '9:00',   satoperendtm: '18:00',
+      satoperbgngtm: '9:00', satoperendtm: '18:00',
+      hloperbgngtm: '', hloperendtm: '',
       closeday: '월요일+공휴일',
       bookco: '62439', seatco: '200',
       latitude: '37.5246790000', longitude: '126.8401520000',
-      lbrryty: '공공도서관', operinestitutionnm: '양천문화재단', emdnm: '신월4동', partclr: '',
+      lbrryty: '공공도서관', operinestitutionnm: '양천문화재단',
+      emdnm: '신월4동', partclr: '',
     },
   ];
   state.allItems   = FALLBACK;
@@ -462,11 +469,12 @@ function esc(str) {
 }
 
 let toastTimer;
-function showToast(msg, type = '') {
+function showToast(msg, type) {
+  type = type || '';
   el.toast.textContent = msg;
-  el.toast.className   = `toast show${type ? ' ' + type : ''}`;
+  el.toast.className   = 'toast show' + (type ? ' ' + type : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.toast.className = 'toast'; }, 3800);
+  toastTimer = setTimeout(function() { el.toast.className = 'toast'; }, 3800);
 }
 
 function showLoading(v) {
